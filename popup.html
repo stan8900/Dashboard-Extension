@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Student Autofill</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Student Autofill</h1>
+        <p>Paste the notepad note, check the detected details, then fill the active form.</p>
+      </header>
+
+      <label class="field">
+        <span>Interaction note</span>
+        <textarea id="sourceText" rows="8" placeholder="Dear team, my name is ..."></textarea>
+      </label>
+
+      <section class="grid">
+        <label class="field">
+          <span>Case type</span>
+          <select id="caseType">
+            <option>Enquiry</option>
+            <option>Conduct</option>
+            <option>Charge</option>
+            <option>Appeal</option>
+            <option>Complaint</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>Contact method</span>
+          <select id="contactMethod">
+            <option>Live chat</option>
+            <option>Email</option>
+            <option>Phone</option>
+            <option>In-person</option>
+            <option>Brunel Assist</option>
+            <option>Apex</option>
+          </select>
+        </label>
+      </section>
+
+      <section class="grid">
+        <label class="field">
+          <span>Student number</span>
+          <input id="studentNumber" inputmode="numeric" autocomplete="off">
+        </label>
+        <label class="field">
+          <span>Last name</span>
+          <input id="lastName" autocomplete="off">
+        </label>
+      </section>
+
+      <section class="grid">
+        <label class="field">
+          <span>Hall</span>
+          <input id="hall" list="halls" autocomplete="off">
+        </label>
+        <label class="field">
+          <span>Room</span>
+          <input id="room" autocomplete="off">
+        </label>
+      </section>
+
+      <label class="field">
+        <span>Notes</span>
+        <textarea id="notes" rows="5"></textarea>
+      </label>
+
+      <details>
+        <summary>Optional fields</summary>
+        <div class="grid optional">
+          <label class="field">
+            <span>Apex ref</span>
+            <input id="apexRef" autocomplete="off">
+          </label>
+          <label class="field">
+            <span>Related Apex ref</span>
+            <input id="relatedApexRef" autocomplete="off">
+          </label>
+          <label class="field">
+            <span>Charge type</span>
+            <select id="chargeType">
+              <option></option>
+              <option>Damage</option>
+              <option>Health & Safety</option>
+              <option>Lock out (Security)</option>
+              <option>Lock out (Experience)</option>
+              <option>No Charge</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Charge amount</span>
+            <input id="chargeAmount" inputmode="decimal" autocomplete="off">
+          </label>
+          <label class="field">
+            <span>Appeal type</span>
+            <select id="appealType">
+              <option></option>
+              <option>Lockout</option>
+              <option>Conduct</option>
+              <option>Damage</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Enquiry type</span>
+            <select id="enquiryType"></select>
+          </label>
+        </div>
+      </details>
+
+      <datalist id="halls"></datalist>
+
+      <footer>
+        <button id="parseBtn" type="button">Parse</button>
+        <button id="fillBtn" type="button">Fill form</button>
+      </footer>
+      <p id="status" role="status"></p>
+    </main>
+
+    <script src="parser.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

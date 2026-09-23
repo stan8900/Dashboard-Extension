@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "Student Enquiry Autofill",
+  "description": "Parse pasted student interaction notes and fill the recording enquiry form.",
+  "version": "1.0.0",
+  "permissions": ["activeTab", "scripting"],
+  "host_permissions": ["<all_urls>"],
+  "action": {
+    "default_title": "Student Autofill",
+    "default_popup": "popup.html"
+  }
+}
