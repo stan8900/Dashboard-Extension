@@ -59,30 +59,30 @@
   ];
 
   const ISSUE_TO_ENQUIRY_TYPE = [
+    [/room\s+change|change\s+room|transfer|swap|swapping\s+rooms|move\s+room/i, "Room Change"],
+    [/lock\s*out|locked\s+out|lockout|lost.*key|forgot.*key|key\s+card|salto|card.*open/i, "Lock out"],
     [/flat\s+dispute|flatmate|flat\s*mate|housemate|noise|antisocial|anti-social|harass|threat|argument|fight|dispute|neighbour/i, "Flat Disputes"],
     [/maintenance|repair|broken|break|leak|flood|heating|heater|radiator|hot\s+water|cold\s+water|mould|mold|light|electric|power|socket|shower|toilet|bathroom|sink|tap|drain|door|window|lock\s+broken|fault|pest|bug|wifi|internet|oven|fridge|freezer|washing/i, "Maintenance"],
     [/move\s*in|moving\s*in|arrival|arrive|collect.*key|key\s+collection|check\s*in/i, "Moving In"],
     [/move\s*out|moving\s*out|check\s*out|leav(?:e|ing)\s+room|departure/i, "Moving Out"],
     [/cancel|cancellation|vacat|withdraw|terminate|leav(?:e|ing)\s+accommodation|end\s+contract/i, "Cancellation or Vacating"],
-    [/room\s+change|change\s+room|transfer|swap|move\s+room/i, "Room Change"],
     [/application|booking|offer|allocation|room\s+offer|apply|portal/i, "Application Query"],
     [/lettings|private\s+rent|landlord|property|brunel\s+student\s+lettings/i, "Brunel Student Lettings Enquiry"],
     [/room\s+concern|bedroom|mattress|furniture|desk|wardrobe|curtain|blind|smell|dirty\s+room/i, "Room Concerns"],
-    [/lock\s*out|locked\s+out|lockout|lost\s+key|forgot.*key|key\s+card|salto/i, "Lock out"],
     [/contract|licen[cs]e|tenancy|instalment|rent|payment\s+plan|agreement/i, "Contract Query"],
     [/course|module|lecture|seminar|timetable|academic|student\s+centre/i, "Course Related"]
   ];
 
   const CASE_TYPE_RULES = [
     [/appeal|appealing|dispute.*charge|challenge.*fine/i, "Appeal"],
-    [/charge|charged|fine|invoice|payment|damage\s+cost|lockout\s+fee|lock\s*out\s+fee/i, "Charge"],
+    [/charge|charged|fine|invoice|damage\s+cost|lockout\s+fee|lock\s*out\s+fee/i, "Charge"],
     [/conduct|disciplinary|misconduct|incident\s+report|security\s+report|statement|hearing|appointment\s+date/i, "Conduct"],
     [/complaint|formal\s+complaint|unhappy|dissatisfied|escalat/i, "Complaint"]
   ];
 
   const HALL_ALIASES = [
     [/st\.?\s*marg(?:aret'?s)?/i, "St Margarets Hall"],
-    [/bishop'?s/i, "Bishops Hall"],
+    [/bishop'?s?|bishop\s+hall/i, "Bishops Hall"],
     [/george\s+shipp/i, "George Shipp Hall"],
     [/syd\s+urry/i, "Syd Urry Hall"],
     [/trevor\s+slater/i, "Trevor Slater Hall"],
@@ -109,13 +109,16 @@
   }
 
   function titleCaseName(value) {
-    return clean(value).replace(/\b[a-z]/gi, (letter) => letter.toUpperCase());
+    return clean(value)
+      .toLowerCase()
+      .replace(/\b[a-z]/g, (letter) => letter.toUpperCase());
   }
 
   function usableName(value) {
     const name = titleCaseName(value);
     if (!name || /^(student|name|first name|last name|surname|n\/a|na|unknown)$/i.test(name)) return "";
     if (/\b(student|id|number|hall|flat|room|issue|problem)\b/i.test(name)) return "";
+    if (/\b(there|water|leaking|underneath|bathroom|sink|started|floor|keeps|getting|wet|struggling|sleep|called|phone|regarding|received|invoice|appeal|charge|moved|noticed|things)\b/i.test(name)) return "";
     return name;
   }
 
@@ -125,6 +128,14 @@
       if (match && match[1]) return clean(match[1]);
     }
     return "";
+  }
+
+  function lines(rawText) {
+    return String(rawText || "")
+      .replace(/&nbsp;|\u00a0/g, " ")
+      .split(/\r?\n/)
+      .map((line) => clean(line))
+      .filter(Boolean);
   }
 
   function detectHall(text) {
@@ -161,6 +172,20 @@
     return maintenanceMatch ? "maintenance issue" : "";
   }
 
+  function detectIssueSummary(rawText, fallbackIssue) {
+    const useful = lines(rawText).filter((line) => {
+      if (/^(dear|hi|hello|thank you|thanks|kind regards|regards|best|yours)/i.test(line)) return false;
+      if (/^(id|student\s*(id|number)|room|hall|flat|name|surname|last\s+name)\s*[:,-]/i.test(line)) return false;
+      if (/^i'?ve just moved in|^i wasnt sure|^i was not sure/i.test(line)) return false;
+      return /(toilet|holder|screw|shower|leak|hook|door|socket|plug|fuse|broken|not work|doesn'?t work|maintenance|repair|mould|heating|water|window|light|sink|tap|drain)/i.test(line);
+    });
+
+    if (!useful.length) return fallbackIssue;
+    return useful
+      .map((line) => line.replace(/^[*-]\s*/, ""))
+      .join("; ");
+  }
+
   function detectEnquiryType(issue, wholeText) {
     const haystack = `${issue} ${wholeText}`;
     for (const [pattern, type] of ISSUE_TO_ENQUIRY_TYPE) {
@@ -169,13 +194,51 @@
     return "Maintenance";
   }
 
-  function detectName(text) {
+  function detectName(rawText) {
+    const allLines = lines(rawText);
+    const labelled = allLines
+      .map((line) => {
+        const match = line.match(/^(?:full\s+name|student\s+name|name|student)\s*(?:is|:|-)?\s*([a-z][a-z .'-]+)$/i);
+        if (!match || /\d/.test(match[1])) return "";
+        return usableName(match[1]);
+      })
+      .find(Boolean);
+    if (labelled) return labelled;
+
+    const standalone = allLines.slice(0, 6).find((line) => {
+      if (/^(id|student\s*(id|number|no)|sno|sid|room|hall|flat)\b/i.test(line)) return false;
+      if (/\d/.test(line) || /[:]/.test(line)) return false;
+      if (!/^[a-z][a-z .'-]+$/i.test(line)) return false;
+      const words = line.split(/\s+/);
+      return words.length >= 2 && words.length <= 4 && usableName(line);
+    });
+    if (standalone) return usableName(standalone);
+
+    const text = clean(rawText);
     const name = firstMatch(text, [
       /\b(?:full\s+name|student\s+name|name)\s*(?:is|:|-)?\s*([a-z][a-z .'-]+?)(?:\s+and\s+my|\s+student\s+id|\s+student\s+number|\s+id\b|\s+sid\b|\s+sno\b|[,.!?]|\n|$)/i,
       /\bmy\s+name\s+is\s+([a-z][a-z .'-]+?)(?:\s+and\s+my|\s+student\s+id|\s+student\s+number|\s+id\b|\s+sid\b|\s+sno\b|[,.!?]|\n|$)/i,
       /\bi\s+am\s+([a-z][a-z .'-]+?)(?:\s+and\s+my|\s+student\s+id|\s+student\s+number|\s+id\b|\s+sid\b|\s+sno\b|[,.!?]|\n|$)/i
     ]);
     return usableName(name);
+  }
+
+  function detectSignoffName(rawText) {
+    const allLines = lines(rawText);
+    for (let index = 0; index < allLines.length; index += 1) {
+      if (/^(kind regards|regards|best|thanks|thank you)[,!.\s]*$/i.test(allLines[index])) {
+        const candidate = allLines[index + 1] || "";
+        if (/^[a-z][a-z .'-]+$/i.test(candidate) && candidate.split(/\s+/).length <= 4) {
+          return usableName(candidate);
+        }
+      }
+    }
+
+    const lastLine = allLines[allLines.length - 1] || "";
+    if (/^[A-Z][A-Z .'-]{2,}$/.test(lastLine) && lastLine.split(/\s+/).length <= 4) {
+      return usableName(lastLine);
+    }
+    return "";
   }
 
   function detectFirstName(text) {
@@ -199,8 +262,9 @@
     const opts = overrides || {};
     const firstName = detectFirstName(text);
     const explicitLastName = detectLastName(text, "");
-    const detectedFullName = detectName(text);
-    const fullName = opts.fullName || detectedFullName || [firstName, explicitLastName].filter(Boolean).join(" ");
+    const detectedFullName = detectName(rawText) || detectSignoffName(rawText);
+    const combinedExplicitName = firstName && explicitLastName ? `${firstName} ${explicitLastName}` : "";
+    const fullName = opts.fullName || combinedExplicitName || detectedFullName || [firstName, explicitLastName].filter(Boolean).join(" ");
     const lastName = opts.lastName || detectLastName(text, fullName);
     const studentNumber = opts.studentNumber || firstMatch(text, [
       /\bstudent\s*(?:id|number|no\.?|#)?\s*(?:is|:|-)?\s*([0-9]{5,12})\b/i,
@@ -209,18 +273,23 @@
       /\b([0-9]{7,8})\b/
     ]);
     const flat = firstMatch(text, [
+      /\b(?:hall|fleming|mill|bishop'?s?|chepstow|galbraith|kilmorey|faraday\s*\d?)\s+(\d+[a-z]?)[/.](?:\d+[a-z]?)\b/i,
       /\b(?:flat|apartment|apt)\s*(?:is|number|no\.?|#|:|-)?\s*([a-z]?\d+[a-z]?|\d+[a-z]?)/i,
       /\b(?:live|lives|staying|stay)\s+in\s+([a-z]?\d+[a-z]?)\s+flat\b/i,
       /\bflat\/room\s*(?:is|:|-)?\s*([a-z]?\d+[a-z]?)[/\s-]+\d+[a-z]?\b/i
     ]);
     const room = firstMatch(text, [
       /\bflat\/room\s*(?:is|:|-)?\s*[a-z]?\d+[a-z]?[/\s-]+(\d+[a-z]?)\b/i,
+      /\b(?:hall|fleming|mill|bishop'?s?|chepstow|galbraith|kilmorey|faraday\s*\d?)\s+\d+[a-z]?[/.](\d+[a-z]?)\b/i,
+      /\b(?:mill|fleming|bishop'?s?|chepstow|galbraith|kilmorey)\s+hall\s+(\d+[a-z]?)\b/i,
+      /\broom\s*(?:is|number|no\.?|#|:|-)?\s*(?:[a-z ]+hall\s*)?([a-z]?\d+[a-z]?|\d+[a-z]?)\b/i,
       /\b(?:room|rm)\s*(?:is|number|no\.?|#|:)?\s*([a-z]?\d+[a-z]?|\d+[a-z]?)/i,
       /\broom\s*(?:number|no\.?)\s*(?:is|:)?\s*([a-z]?\d+[a-z]?|\d+[a-z]?)/i,
       /\b(?:and|,)\s*([a-z]?\d+[a-z]?)\s+room\b/i
     ]);
     const hall = opts.hall || detectHall(text);
-    const issue = opts.issue || detectIssue(text);
+    const detectedIssue = detectIssue(text);
+    const issue = opts.issue || detectIssueSummary(rawText, detectedIssue);
     const caseType = opts.caseType || detectCaseType(text);
     const enquiryType = opts.enquiryType || detectEnquiryType(issue, text);
     const generatedNotes = buildNotes({
@@ -249,10 +318,13 @@
       issue,
       brunelAssistRefNumber: "No",
       voucherGiven: "No",
-      apexRef: opts.apexRef || firstMatch(text, [/\bapex(?:\s+incident)?(?:\s+number|\s+ref)?\s*(?:is|:)?\s*([0-9]+)/i]),
-      relatedApexRef: opts.relatedApexRef || firstMatch(text, [/\brelated\s+apex(?:\s+ref)?\s*(?:is|:)?\s*([a-z0-9-]+)/i]),
+      apexRef: opts.apexRef || firstMatch(text, [
+        /\b(?:apex|assist|brunel\s+assist)?\s*(?:incident\s+)?(?:ref|reference|number)\s*(?:is|:|-)?\s*([a-z]{1,8}-?[0-9]{3,12})\b/i,
+        /\bapex(?:\s+incident)?(?:\s+number|\s+ref)?\s*(?:is|:|-)?\s*([a-z0-9-]+)/i
+      ]),
+      relatedApexRef: opts.relatedApexRef || firstMatch(text, [/\brelated\s+apex(?:\s+ref)?\s*(?:is|:|-)?\s*([a-z0-9-]+)/i]),
       chargeType: opts.chargeType || detectChargeType(text),
-      chargeAmount: opts.chargeAmount || firstMatch(text, [/\b(?:charge\s+amount|amount|charged)\s*(?:is|:|-)?\s*(?:gbp|£)?\s*([0-9]+(?:\.[0-9]{1,2})?)/i]),
+      chargeAmount: opts.chargeAmount || detectChargeAmount(text),
       appealType: opts.appealType || detectAppealType(text),
       notes: opts.notes || generatedNotes
     };
@@ -266,10 +338,10 @@
   }
 
   function detectContactMethod(text) {
-    if (/\bemail\b/i.test(text)) return "Email";
+    if (/\bbrunel\s+assist\b/i.test(text)) return "Brunel Assist";
+    if (/\bemail(?:ing|ed)?\b/i.test(text)) return "Email";
     if (/\bphone|call\b/i.test(text)) return "Phone";
     if (/\bin[- ]?person|reception|front desk\b/i.test(text)) return "In-person";
-    if (/\bbrunel\s+assist\b/i.test(text)) return "Brunel Assist";
     if (/\bapex\b/i.test(text)) return "Apex";
     return "Live chat";
   }
@@ -288,6 +360,15 @@
     if (/\bconduct\b/i.test(text)) return "Conduct";
     if (/\bdamage\b/i.test(text)) return "Damage";
     return "";
+  }
+
+  function detectChargeAmount(text) {
+    return firstMatch(text, [
+      /\b(?:damage|cleaning|lock\s*out|lockout|health\s*(?:&|and)\s*safety)?\s*charge\s+(?:of|for|is|:|-)?\s*(?:£|gbp\s*)\s*([0-9]+(?:\.[0-9]{1,2})?)/i,
+      /(?:£|gbp\s*)\s*([0-9]+(?:\.[0-9]{1,2})?)\s*(?:charge|fine|invoice|damage|cleaning)/i,
+      /(?:£|gbp\s*)\s*([0-9]+(?:\.[0-9]{1,2})?)/i,
+      /\b(?:charge\s+amount|amount|charged)\s*(?:is|:|-)?\s*(?:gbp|£)?\s*([0-9]+(?:\.[0-9]{1,2})?)/i
+    ]);
   }
 
   function buildNotes(data) {

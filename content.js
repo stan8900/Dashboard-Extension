@@ -1,8 +1,6 @@
 (function formAutofill() {
   "use strict";
 
-  if (window.StudentFormAutofill) return;
-
   const FIELD_SETS = {
     base: [
       ["Is the enquirer a student?", "isStudent", "choice"],
@@ -111,26 +109,82 @@
     return new RegExp(`(?:^|\\n|\\s)\\d*\\s*[.)-]?\\s*${escaped}(?:\\s|\\n|$)`, "i");
   }
 
+  function controlElements(container) {
+    return Array.from(container.querySelectorAll("input, textarea, select, [contenteditable='true']"))
+      .filter(visible);
+  }
+
+  function containerScore(container, target, pattern) {
+    const text = normalize(container.innerText || container.textContent);
+    const rawText = container.innerText || container.textContent || "";
+    const controls = controlElements(container).length;
+    const length = rawText.length;
+    let score = 0;
+    if (text === target) score -= 1000;
+    if (text.startsWith(`${target} `)) score -= 500;
+    if (pattern.test(rawText)) score -= 250;
+    if (controls === 1) score -= 150;
+    score += controls * 75;
+    score += length;
+    return score;
+  }
+
   function findQuestion(label) {
     const target = normalize(label);
     const pattern = labelRegex(label);
     const containers = questionContainers();
-    const exact = containers.find((container) => {
-      const text = normalize(container.innerText || container.textContent);
-      return text === target || text.startsWith(`${target} `) || pattern.test(container.innerText || container.textContent);
-    });
-    if (exact) return exact;
+    const matches = containers
+      .filter((container) => {
+        const text = normalize(container.innerText || container.textContent);
+        return text === target || text.startsWith(`${target} `) || pattern.test(container.innerText || container.textContent);
+      })
+      .sort((a, b) => containerScore(a, target, pattern) - containerScore(b, target, pattern));
+    if (matches[0]) return matches[0];
 
     const textNode = Array.from(document.querySelectorAll("label, legend, span, div, p"))
       .filter(visibleEnough)
       .find((node) => pattern.test(node.innerText || node.textContent));
 
     if (!textNode) return null;
-    return textNode.closest("[data-automation-id='questionItem'], [data-automation-id='questionContainer'], [data-automation-id='field-list-item'], [data-automation-id='formField'], [role='group'], fieldset, li, section, div") || textNode.parentElement;
+    const candidates = [];
+    let node = textNode;
+    while (node && node !== document.body) {
+      if (meaningfulContainer(node)) candidates.push(node);
+      node = node.parentElement;
+    }
+    return candidates.sort((a, b) => containerScore(a, target, pattern) - containerScore(b, target, pattern))[0] || textNode.parentElement;
   }
 
   function foundQuestionCount() {
     return questionContainers().length;
+  }
+
+  function inspect() {
+    const questions = questionContainers().map((container, index) => {
+      const label = (container.innerText || container.textContent || "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 220);
+      const controls = Array.from(container.querySelectorAll("input, textarea, select, [role='radio'], [role='option'], [role='combobox'], [role='checkbox'], button"))
+        .filter(visibleEnough)
+        .map((node) => {
+          const type = node.tagName.toLowerCase() === "input" ? node.getAttribute("type") || "input" : node.getAttribute("role") || node.tagName.toLowerCase();
+          const text = (node.innerText || node.getAttribute("aria-label") || node.getAttribute("placeholder") || node.value || "")
+            .replace(/\s+/g, " ")
+            .trim()
+            .slice(0, 80);
+          return text ? `${type}: ${text}` : type;
+        })
+        .slice(0, 12);
+      return { index: index + 1, label, controls };
+    });
+
+    return {
+      href: location.href,
+      title: document.title,
+      questions: questions.length,
+      sample: questions.slice(0, 20)
+    };
   }
 
   function setNativeValue(element, value) {
@@ -149,9 +203,82 @@
     return new Promise((resolve) => window.setTimeout(resolve, ms));
   }
 
-  function fillText(container, value) {
+  function labelCandidates(label, key) {
+    const aliases = {
+      isStudent: [
+        "Is the enquirer a student?",
+        "Is the enquirer student?",
+        "Student?",
+        "Enquirer a student?"
+      ],
+      studentNumber: [
+        "Student Number",
+        "Student ID",
+        "Student Id",
+        "Student No",
+        "Student No.",
+        "ID",
+        "SID",
+        "SNo"
+      ],
+      lastName: [
+        "Last Name",
+        "Surname",
+        "Family Name"
+      ],
+      team: [
+        "Team Recording Enquiry",
+        "Team recording enquiry",
+        "Recording Enquiry Team",
+        "Recording enquiry team",
+        "Team"
+      ]
+    };
+    return aliases[key] || [label];
+  }
+
+  function activate(element) {
+    if (!element) return;
+    element.dispatchEvent(new MouseEvent("mouseover", { bubbles: true, view: window }));
+    element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, view: window }));
+    element.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, view: window }));
+    element.click();
+    element.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  function fieldHints(key) {
+    const hints = {
+      studentNumber: ["student number", "student id", "student no", "sid", "sno", "id"],
+      lastName: ["last name", "surname", "family name"],
+      notes: ["notes", "details", "description", "summary"],
+      apexRef: ["apex incident number", "apex ref", "incident number"],
+      relatedApexRef: ["related apex ref", "related apex", "related reference"],
+      chargeAmount: ["charge amount", "amount"]
+    };
+    return hints[key] || [];
+  }
+
+  function textInputScore(input, key) {
+    const haystack = normalize([
+      input.getAttribute("aria-label"),
+      input.getAttribute("placeholder"),
+      input.getAttribute("name"),
+      input.getAttribute("id"),
+      input.closest("label") && input.closest("label").innerText
+    ].filter(Boolean).join(" "));
+    const hints = fieldHints(key);
+    const matched = hints.some((hint) => haystack.includes(normalize(hint)));
+    const wrongStatus = key === "lastName" && /\bstatus\b/.test(haystack);
+    const wrongLastName = key === "studentNumber" && /\b(last name|surname|family name|status)\b/.test(haystack);
+    return (matched ? -1000 : 0) + (wrongStatus || wrongLastName ? 10000 : 0) + haystack.length;
+  }
+
+  function fillText(container, value, key) {
     if (!value) return false;
-    const input = container.querySelector("textarea, input[type='text'], input[type='number'], input[type='email'], input[type='tel'], input:not([type]), [contenteditable='true']");
+    const inputs = Array.from(container.querySelectorAll("textarea, input[type='text'], input[type='number'], input[type='email'], input[type='tel'], input:not([type]), [contenteditable='true']"))
+      .filter(visible)
+      .sort((a, b) => textInputScore(a, key) - textInputScore(b, key));
+    const input = inputs[0];
     if (!input) return false;
     input.focus();
     if (input.isContentEditable) {
@@ -167,14 +294,23 @@
   function optionCandidates(container) {
     return Array.from(container.querySelectorAll("label, [role='radio'], [role='option'], [role='checkbox'], button, span, div, input"))
       .filter(visible)
-      .filter((node) => normalize(node.innerText || node.getAttribute("aria-label")).length);
+      .filter((node) => normalize(node.innerText || node.getAttribute("aria-label") || node.value).length);
+  }
+
+  function optionText(node) {
+    return normalize(node.innerText || node.getAttribute("aria-label") || node.value || "");
   }
 
   function exactOption(container, value) {
     const wanted = normalize(value);
-    return optionCandidates(container).find((node) => {
-      const text = normalize(node.innerText || node.getAttribute("aria-label"));
-      return text === wanted || text.startsWith(`${wanted} `) || text.includes(wanted);
+    const candidates = optionCandidates(container);
+    const exact = candidates.find((node) => optionText(node) === wanted);
+    if (exact) return exact;
+
+    return candidates.find((node) => {
+      const text = optionText(node);
+      if (text.startsWith(`${wanted} `)) return true;
+      return wanted.length >= 8 && text.includes(wanted);
     });
   }
 
@@ -210,15 +346,16 @@
   async function clickGlobalOption(value) {
     await sleep(120);
     const wanted = normalize(value);
-    const option = Array.from(document.querySelectorAll("[role='option'], [role='menuitemradio'], [role='radio'], button, span, div"))
+    const option = Array.from(document.querySelectorAll("[role='option'], [role='menuitemradio'], [role='radio'], label, button"))
       .filter(visible)
       .find((node) => {
         const text = normalize(node.innerText || node.getAttribute("aria-label"));
-        return text === wanted || text.startsWith(`${wanted} `) || text.includes(wanted);
+        if (text === wanted || text.startsWith(`${wanted} `)) return true;
+        return wanted.length >= 8 && text.includes(wanted);
       });
     if (!option) return false;
     const clickable = option.closest("[role='option'], [role='menuitemradio'], [role='radio'], button, label") || option;
-    clickable.click();
+    activate(clickable);
     return true;
   }
 
@@ -228,9 +365,10 @@
 
     const option = exactOption(container, value);
     if (option) {
-      const clickable = option.closest("label, [role='radio'], [role='option'], [role='checkbox'], button") || option;
+      const input = option.matches("input") ? option : option.querySelector && option.querySelector("input");
+      const clickable = input || option.closest("label, [role='radio'], [role='option'], [role='checkbox'], button") || option;
       clickable.scrollIntoView({ block: "center", inline: "nearest" });
-      clickable.click();
+      activate(clickable);
       return true;
     }
 
@@ -244,14 +382,34 @@
     return typeCombobox(container, value);
   }
 
+  function waitForQuestionCountChange(previousCount, timeoutMs) {
+    const started = Date.now();
+    return new Promise((resolve) => {
+      const check = () => {
+        const currentCount = foundQuestionCount();
+        if (currentCount && currentCount !== previousCount) {
+          resolve({ changed: true, questions: currentCount });
+          return;
+        }
+        if (Date.now() - started >= timeoutMs) {
+          resolve({ changed: false, questions: currentCount });
+          return;
+        }
+        window.setTimeout(check, 200);
+      };
+      check();
+    });
+  }
+
   async function fillOne(label, key, mode, data) {
     const value = data[key];
     if (!value) return { skipped: true };
 
-    const container = findQuestion(label);
+    const labels = labelCandidates(label, key);
+    const container = labels.map(findQuestion).find(Boolean);
     if (!container) return { missed: true };
 
-    const ok = mode === "choice" ? await clickChoice(container, value) : fillText(container, value);
+    const ok = mode === "choice" ? await clickChoice(container, value) : fillText(container, value, key);
     return ok ? { filled: true } : { missed: true };
   }
 
@@ -275,14 +433,75 @@
     data.team = "Student Experience";
     let filled = 0;
     const missed = [];
-    for (const [label, key, mode] of fieldsFor(data)) {
+    const fields = fieldsFor(data);
+
+    for (const [label, key, mode] of fields) {
       const result = await fillOne(label, key, mode, data);
       if (result.filled) filled += 1;
       if (result.missed) missed.push(label);
-      await sleep(80);
+      await sleep(mode === "choice" ? 2000 : 250);
     }
+
+    if (missed.length) {
+      await sleep(900);
+      const retry = missed.splice(0, missed.length);
+      for (const label of retry) {
+        const field = fields.find(([fieldLabel]) => fieldLabel === label);
+        if (!field) continue;
+        const result = await fillOne(field[0], field[1], field[2], data);
+        if (result.filled) filled += 1;
+        if (result.missed) missed.push(label);
+        await sleep(180);
+      }
+    }
+
+    await sleep(150);
     return { filled, missed, questions: foundQuestionCount() };
   }
 
-  window.StudentFormAutofill = { fill };
+  function submitCandidates() {
+    return Array.from(document.querySelectorAll("button, input[type='submit'], [role='button']"))
+      .filter(visible)
+      .filter((node) => {
+        const text = normalize(node.innerText || node.value || node.getAttribute("aria-label") || "");
+        return text === "submit" || text === "send" || text === "record" || text.includes("submit");
+      });
+  }
+
+  async function submit() {
+    await sleep(250);
+    const button = submitCandidates()[0];
+    if (!button) return { submitted: false, reason: "Submit button not found." };
+    button.scrollIntoView({ block: "center", inline: "nearest" });
+    button.click();
+    return { submitted: true };
+  }
+
+  async function prepareNextResponse() {
+    const previousCount = foundQuestionCount();
+    await sleep(2000);
+    const next = Array.from(document.querySelectorAll("button, a, [role='button']"))
+      .filter(visible)
+      .find((node) => {
+        const text = normalize(node.innerText || node.getAttribute("aria-label") || "");
+        return text.includes("submit another") || text.includes("another response") || text.includes("new response");
+      });
+
+    if (next) {
+      next.scrollIntoView({ block: "center", inline: "nearest" });
+      activate(next);
+    }
+
+    await sleep(2000);
+    const change = await waitForQuestionCountChange(previousCount, 3000);
+    return { ready: Boolean(next) || change.questions > 0, questions: change.questions };
+  }
+
+  async function fillAndSubmit(data) {
+    const fillResult = await fill(data);
+    const submitResult = await submit();
+    return { ...fillResult, ...submitResult };
+  }
+
+  window.StudentFormAutofill = { fill, fillAndSubmit, inspect, prepareNextResponse, submit };
 })();

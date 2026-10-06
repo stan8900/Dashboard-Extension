@@ -115,9 +115,24 @@ button {
   color: #174276;
 }
 
+#inspectBtn {
+  background: #e8edf3;
+  color: #344054;
+}
+
 #fillBtn {
   background: #176b55;
   color: #fff;
+}
+
+#submitAllBtn {
+  background: #7c3aed;
+  color: #fff;
+}
+
+button:disabled {
+  cursor: wait;
+  opacity: 0.65;
 }
 
 #status {
