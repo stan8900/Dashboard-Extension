@@ -26,6 +26,7 @@
   const queueDetail = $("queueDetail");
   const queueCount = $("queueCount");
   const queueProgress = $("queueProgress");
+  const detectedCount = $("detectedCount");
   let latestParsed = null;
   let batchRunning = false;
 
@@ -163,6 +164,13 @@
     return requests.filter(Boolean);
   }
 
+  function updateDetectedCount() {
+    const count = splitCompletedRequests(fields.sourceText.value).length;
+    detectedCount.textContent = `${count} detected`;
+    detectedCount.title = count === 1 ? "1 completion detected" : `${count} completions detected`;
+    return count;
+  }
+
   async function activeTab() {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab || !tab.id) {
@@ -230,6 +238,7 @@
     if (batchRunning) return;
 
     const requests = splitCompletedRequests(fields.sourceText.value);
+    updateDetectedCount();
     if (!requests.length) {
       status.textContent = "Paste at least one completed request first.";
       hideQueuePanel();
@@ -372,10 +381,14 @@
 
   fields.sourceText.addEventListener("input", () => {
     latestParsed = null;
+    updateDetectedCount();
     window.clearTimeout(fields.sourceText.parseTimer);
     fields.sourceText.parseTimer = window.setTimeout(parseAndDisplay, 250);
   });
-  $("parseBtn").addEventListener("click", parseAndDisplay);
+  $("parseBtn").addEventListener("click", () => {
+    updateDetectedCount();
+    parseAndDisplay();
+  });
   $("inspectBtn").addEventListener("click", () => {
     inspectForm().catch((error) => {
       status.textContent = error.message || "Could not inspect the form.";
@@ -391,4 +404,5 @@
       status.textContent = error.message || "Could not submit completed requests.";
     });
   });
+  updateDetectedCount();
 })();
