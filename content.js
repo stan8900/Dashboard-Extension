@@ -49,6 +49,7 @@
       ["Notes", "notes", "text"]
     ]
   };
+  const FORM_URL_KEY = "StudentFormAutofill:lastFormUrl";
 
   function normalize(value) {
     return String(value || "")
@@ -484,6 +485,11 @@
     await sleep(250);
     const button = submitCandidates()[0];
     if (!button) return { submitted: false, reason: "Submit button not found." };
+    try {
+      sessionStorage.setItem(FORM_URL_KEY, location.href);
+    } catch (error) {
+      // Some embedded frames can deny storage; the visible submit flow can still continue.
+    }
     button.scrollIntoView({ block: "center", inline: "nearest" });
     button.click();
     return { submitted: true };
@@ -551,6 +557,23 @@
     return { ready: false, questions: foundQuestionCount() };
   }
 
+  function reopenSavedForm() {
+    let formUrl = "";
+    try {
+      formUrl = sessionStorage.getItem(FORM_URL_KEY) || "";
+    } catch (error) {
+      formUrl = "";
+    }
+
+    if (!formUrl) return { started: false, reason: "Original form URL was not available." };
+    if (location.href === formUrl) {
+      location.reload();
+    } else {
+      location.assign(formUrl);
+    }
+    return { started: true };
+  }
+
   async function prepareNextResponse() {
     await sleep(2000);
     const next = await waitForNextResponseAction(12000);
@@ -562,10 +585,22 @@
 
     await sleep(2000);
     const ready = await waitForReadyForm(10000);
+    if (!ready.ready) {
+      const reopened = reopenSavedForm();
+      if (reopened.started) {
+        return {
+          ready: true,
+          reopened: true,
+          questions: ready.questions,
+          reason: next ? "Blank form did not appear, reopened original form URL." : "Submit another response link not found, reopened original form URL."
+        };
+      }
+    }
+
     return {
       ready: Boolean(next) && ready.ready,
       questions: ready.questions,
-      reason: next ? "" : "Submit another response link not found."
+      reason: next ? "Blank form did not appear after clicking submit another response." : "Submit another response link not found."
     };
   }
 
