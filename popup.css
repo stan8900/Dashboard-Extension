@@ -135,6 +135,106 @@ button:disabled {
   opacity: 0.65;
 }
 
+.queue-panel {
+  border: 1px solid #d8dee9;
+  border-radius: 6px;
+  background: #fff;
+  margin-top: 12px;
+  padding: 10px;
+}
+
+.queue-panel[hidden] {
+  display: none;
+}
+
+.queue-head {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 22px 1fr auto;
+}
+
+.queue-head strong {
+  color: #111827;
+  display: block;
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.queue-head span {
+  color: #5f6c7b;
+  display: block;
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+#queueCount {
+  color: #344054;
+  font-weight: 700;
+}
+
+.spinner {
+  animation: spin 0.8s linear infinite;
+  border: 3px solid #e5e7eb;
+  border-radius: 50%;
+  border-top-color: #7c3aed;
+  height: 22px;
+  width: 22px;
+}
+
+.queue-panel.done .spinner {
+  animation: none;
+  border-color: #176b55;
+  position: relative;
+}
+
+.queue-panel.done .spinner::after {
+  border-bottom: 2px solid #176b55;
+  border-right: 2px solid #176b55;
+  content: "";
+  height: 9px;
+  left: 7px;
+  position: absolute;
+  top: 3px;
+  transform: rotate(45deg);
+  width: 5px;
+}
+
+.queue-panel.error .spinner {
+  animation: pulse 0.8s ease-in-out infinite alternate;
+  border-color: #b42318;
+}
+
+.progress-track {
+  background: #eef2f7;
+  border-radius: 999px;
+  height: 7px;
+  margin-top: 10px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  background: linear-gradient(90deg, #176b55, #7c3aed);
+  height: 100%;
+  transition: width 240ms ease;
+  width: 0%;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pulse {
+  from {
+    opacity: 0.55;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 #status {
   min-height: 20px;
   color: #2f5d50;

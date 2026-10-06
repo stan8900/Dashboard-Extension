@@ -21,6 +21,11 @@
   };
 
   const status = $("status");
+  const queuePanel = $("queuePanel");
+  const queueTitle = $("queueTitle");
+  const queueDetail = $("queueDetail");
+  const queueCount = $("queueCount");
+  const queueProgress = $("queueProgress");
   let latestParsed = null;
   let batchRunning = false;
 
@@ -95,6 +100,25 @@
 
   function dataFromText(text) {
     return StudentAutofillParser.parseInteraction(text);
+  }
+
+  function updateQueuePanel(state) {
+    const total = state.total || 0;
+    const done = state.done || 0;
+    const percent = total ? Math.round((done / total) * 100) : 0;
+    queuePanel.hidden = false;
+    queuePanel.classList.toggle("done", state.mode === "done");
+    queuePanel.classList.toggle("error", state.mode === "error");
+    queueTitle.textContent = state.title || "Queue processing";
+    queueDetail.textContent = state.detail || "Preparing queue...";
+    queueCount.textContent = `${done}/${total}`;
+    queueProgress.style.width = `${percent}%`;
+  }
+
+  function hideQueuePanel() {
+    queuePanel.hidden = true;
+    queuePanel.classList.remove("done", "error");
+    queueProgress.style.width = "0%";
   }
 
   function splitCompletedRequests(rawText) {
@@ -208,6 +232,7 @@
     const requests = splitCompletedRequests(fields.sourceText.value);
     if (!requests.length) {
       status.textContent = "Paste at least one completed request first.";
+      hideQueuePanel();
       return;
     }
 
@@ -221,8 +246,20 @@
 
     let submitted = 0;
     try {
+      updateQueuePanel({
+        total: requests.length,
+        done: 0,
+        title: "Queue ready",
+        detail: `Found ${requests.length} item${requests.length === 1 ? "" : "s"}. Starting...`
+      });
       for (let index = 0; index < requests.length; index += 1) {
         status.textContent = `Submitting ${index + 1} of ${requests.length}...`;
+        updateQueuePanel({
+          total: requests.length,
+          done: submitted,
+          title: "Processing queue",
+          detail: `Filling item ${index + 1} of ${requests.length}`
+        });
         if (!(await loadFiller(tab.id))) return;
 
         const parsed = dataFromText(requests[index]);
@@ -235,12 +272,31 @@
         if (!result || !result.submitted) {
           const reason = result && result.reason ? ` ${result.reason}` : "";
           status.textContent = `Stopped at ${index + 1} of ${requests.length}.${reason}`;
+          updateQueuePanel({
+            total: requests.length,
+            done: submitted,
+            mode: "error",
+            title: "Queue stopped",
+            detail: `Item ${index + 1} was not submitted.${reason}`
+          });
           return;
         }
 
         submitted += 1;
+        updateQueuePanel({
+          total: requests.length,
+          done: submitted,
+          title: "Submitted",
+          detail: `Completed item ${submitted} of ${requests.length}`
+        });
         if (index < requests.length - 1) {
           status.textContent = `Submitted ${submitted}. Opening next response...`;
+          updateQueuePanel({
+            total: requests.length,
+            done: submitted,
+            title: "Opening next",
+            detail: `Preparing blank response for item ${index + 2}`
+          });
           await new Promise((resolve) => window.setTimeout(resolve, 2000));
           await loadFiller(tab.id);
           const nextResult = await executeInFrames(
@@ -250,6 +306,13 @@
           );
           if (!nextResult || !nextResult.ready) {
             status.textContent = `Submitted ${submitted} of ${requests.length}, but I could not open the next blank response.`;
+            updateQueuePanel({
+              total: requests.length,
+              done: submitted,
+              mode: "error",
+              title: "Queue paused",
+              detail: "Could not open the next blank response"
+            });
             return;
           }
           await new Promise((resolve) => window.setTimeout(resolve, 2000));
@@ -257,6 +320,13 @@
       }
 
       status.textContent = `Submitted ${submitted} of ${requests.length} completed requests.`;
+      updateQueuePanel({
+        total: requests.length,
+        done: submitted,
+        mode: "done",
+        title: "Queue complete",
+        detail: `Submitted ${submitted} item${submitted === 1 ? "" : "s"}`
+      });
     } finally {
       batchRunning = false;
       $("submitAllBtn").disabled = false;

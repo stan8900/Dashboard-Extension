@@ -120,6 +120,19 @@
         <button id="fillBtn" type="button">Fill form</button>
         <button id="submitAllBtn" type="button">Submit all</button>
       </footer>
+      <section id="queuePanel" class="queue-panel" aria-live="polite" hidden>
+        <div class="queue-head">
+          <div class="spinner" aria-hidden="true"></div>
+          <div>
+            <strong id="queueTitle">Queue processing</strong>
+            <span id="queueDetail">Preparing queue...</span>
+          </div>
+          <span id="queueCount">0/0</span>
+        </div>
+        <div class="progress-track">
+          <div id="queueProgress" class="progress-fill"></div>
+        </div>
+      </section>
       <p id="status" role="status"></p>
     </main>
 
