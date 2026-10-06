@@ -113,6 +113,11 @@
       // Plain pasted notes are expected most of the time.
     }
 
+    if (StudentAutofillParser.splitApexQueue) {
+      const apexRows = StudentAutofillParser.splitApexQueue(text);
+      if (apexRows.length > 1) return apexRows;
+    }
+
     const delimiterSplit = text
       .split(/\n\s*(?:-{3,}|={3,}|\*{3,}|#{3,}|request\s+\d+\s*:|completed\s+request\s+\d+\s*:)\s*\n/i)
       .map((item) => item.trim())

@@ -415,6 +415,18 @@
 
   function fieldsFor(data) {
     const caseSpecific = FIELD_SETS[data.caseType] || FIELD_SETS.Enquiry;
+    if (data.caseType === "Enquiry" && data.contactMethod === "Apex") {
+      return FIELD_SETS.base.concat([
+        ["Method of contact", "contactMethod", "choice"],
+        ["Enquiry Type", "enquiryType", "choice"],
+        ["Apex Incident Number", "apexRef", "text"],
+        ["Related Apex Ref", "relatedApexRef", "text"],
+        ["Hall", "hall", "choice"],
+        ["Brunel Assist Ref Number", "brunelAssistRefNumber", "choice"],
+        ["Voucher Given", "voucherGiven", "choice"],
+        ["Notes", "notes", "text"]
+      ]);
+    }
     if (data.caseType === "Enquiry" && data.enquiryType === "Flat Disputes") {
       return FIELD_SETS.base.concat([
         ["Method of contact", "contactMethod", "choice"],

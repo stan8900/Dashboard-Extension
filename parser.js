@@ -75,7 +75,7 @@
 
   const CASE_TYPE_RULES = [
     [/appeal|appealing|dispute.*charge|challenge.*fine/i, "Appeal"],
-    [/charge|charged|fine|invoice|damage\s+cost|lockout\s+fee|lock\s*out\s+fee/i, "Charge"],
+    [/\bcharge(?:d|s)?\b|invoice|damage\s+cost|lockout\s+fee|lock\s*out\s+fee/i, "Charge"],
     [/conduct|disciplinary|misconduct|incident\s+report|security\s+report|statement|hearing|appointment\s+date/i, "Conduct"],
     [/complaint|formal\s+complaint|unhappy|dissatisfied|escalat/i, "Complaint"]
   ];
@@ -138,6 +138,36 @@
       .filter(Boolean);
   }
 
+  function stripCodeFences(rawText) {
+    return String(rawText || "")
+      .replace(/```[a-z]*\s*/gi, "")
+      .replace(/```/g, "")
+      .trim();
+  }
+
+  function looksLikeApexRow(rawText) {
+    const text = stripCodeFences(rawText);
+    return /^\d{5,}\s+\S/.test(text) && /\b\d{2}-[A-Za-z]{3}-\d{4}\b/.test(text);
+  }
+
+  function apexColumns(rawText) {
+    const text = stripCodeFences(rawText);
+    const tabbed = text.split(/\t+/).map(clean).filter(Boolean);
+    if (tabbed.length >= 8) return tabbed;
+
+    const match = text.match(/^(\d{5,})\s+(.+?)\s+(\d{2}-[A-Za-z]{3}-\d{4})\s+(\d{1,2}:\d{2})\s+(.+?)\s+(\d{4}\/\d)\s+(.+?)\s+(\d{2}-[A-Za-z]{3}-\d{4})\s+([\s\S]+)$/);
+    return match ? match.slice(1).map(clean) : [];
+  }
+
+  function splitApexQueue(rawText) {
+    const text = stripCodeFences(rawText);
+    if (!text) return [];
+    return text
+      .split(/\n(?=\d{5,}\s+)/)
+      .map((row) => row.trim())
+      .filter(looksLikeApexRow);
+  }
+
   function detectHall(text) {
     const normalized = clean(text).toLowerCase();
     const direct = HALLS.find((hall) => normalized.includes(hall.toLowerCase()));
@@ -153,6 +183,16 @@
     }
 
     return "";
+  }
+
+  function normalizeHallName(value) {
+    const hall = clean(value);
+    if (!hall) return "";
+    const direct = HALLS.find((item) => item.toLowerCase() === hall.toLowerCase());
+    if (direct) return direct;
+    const withHall = HALLS.find((item) => item.toLowerCase() === `${hall} hall`.toLowerCase());
+    if (withHall) return withHall;
+    return titleCaseName(hall);
   }
 
   function detectIssue(text) {
@@ -258,6 +298,8 @@
   }
 
   function parseInteraction(rawText, overrides) {
+    if (looksLikeApexRow(rawText)) return parseApexInteraction(rawText, overrides);
+
     const text = clean(rawText);
     const opts = overrides || {};
     const firstName = detectFirstName(text);
@@ -330,6 +372,69 @@
     };
   }
 
+  function parseApexInteraction(rawText, overrides) {
+    const opts = overrides || {};
+    const columns = apexColumns(rawText);
+    if (columns.length < 8) {
+      const text = clean(stripCodeFences(rawText));
+      const apexRef = opts.apexRef || firstMatch(text, [/^(\d{5,})\b/]);
+      return {
+        ...parseInteraction(text.replace(/^\d{5,}\s*/, ""), { ...opts, contactMethod: "Apex" }),
+        contactMethod: "Apex",
+        apexRef
+      };
+    }
+
+    const [
+      apexRef,
+      category,
+      incidentDate,
+      incidentTime,
+      report,
+      academicYear,
+      hallColumn,
+      closedDate,
+      outcome
+    ] = columns;
+    const body = [category, report, outcome].filter(Boolean).join(" ");
+    const hall = opts.hall || normalizeHallName(hallColumn) || detectHall(body);
+    const caseType = opts.caseType || detectCaseType(body);
+    const enquiryType = opts.enquiryType || detectEnquiryType(category, body);
+    const notes = opts.notes || [
+      `Apex ${apexRef}.`,
+      category ? `Category: ${category}.` : "",
+      incidentDate || incidentTime ? `Incident: ${[incidentDate, incidentTime].filter(Boolean).join(" ")}.` : "",
+      academicYear ? `Year: ${academicYear}.` : "",
+      hall ? `Hall: ${hall}.` : "",
+      report ? `Report: ${report}` : "",
+      outcome ? `Outcome: ${outcome}` : "",
+      closedDate ? `Closed: ${closedDate}.` : ""
+    ].filter(Boolean).join(" ");
+
+    return {
+      isStudent: "Yes",
+      studentNumber: opts.studentNumber || "",
+      fullName: opts.fullName || "",
+      lastName: opts.lastName || "",
+      team: "Student Experience",
+      caseType,
+      contactMethod: "Apex",
+      enquiryType,
+      hall,
+      flat: "",
+      room: "",
+      issue: clean(`${category} ${report}`),
+      brunelAssistRefNumber: "No",
+      voucherGiven: "No",
+      apexRef: opts.apexRef || apexRef,
+      relatedApexRef: opts.relatedApexRef || "",
+      chargeType: opts.chargeType || detectChargeType(body),
+      chargeAmount: opts.chargeAmount || detectChargeAmount(body),
+      appealType: opts.appealType || detectAppealType(body),
+      notes
+    };
+  }
+
   function detectCaseType(text) {
     for (const [pattern, type] of CASE_TYPE_RULES) {
       if (pattern.test(text)) return type;
@@ -390,7 +495,7 @@
     return parts.join(" ");
   }
 
-  const api = { HALLS, ENQUIRY_TYPES, parseInteraction, buildNotes };
+  const api = { HALLS, ENQUIRY_TYPES, parseInteraction, splitApexQueue, buildNotes };
   root.StudentAutofillParser = api;
   if (typeof module !== "undefined") module.exports = api;
 })(typeof globalThis !== "undefined" ? globalThis : window);

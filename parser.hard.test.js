@@ -1,5 +1,5 @@
 const assert = require("assert");
-const { parseInteraction } = require("./parser");
+const { parseInteraction, splitApexQueue } = require("./parser");
 
 const cases = [
   {
@@ -157,3 +157,31 @@ for (const item of cases) {
 const passed = cases.length - failed;
 console.log(`${passed}/${cases.length} hard parser cases passed.`);
 if (failed) process.exit(1);
+
+const apexQueue = `219389\tPRE ALARM ACTIVATION - CAMPUS / HALLS\t05-Oct-2026\t20:07\tTyrrell reported a pre-alarm activation at the above location.\t2026/7\tGEORGE SHIPP HALL\t05-Oct-2026\tSecurity to location. Cause: Someone was cooking food and left the kitchen door open. No perpetrator found. Security reset the panel. Student Living Noted. Email reminder was sent to the flat. Thank you Security (SJ) 06/10/2026
+\`\`\`vbnet
+123456\tHALLS MAINTENANCE ISSUES\t05-Oct-2026\t20:13\tMiss STUDENT called the security office to report that the oven is not working in her kitchen.\t2026/7\tCONCOURSE\t05-Oct-2026\tSecurity to the location and checked all the trip switches. They were all fine, but the oven was still not working. Security contacted Maintenance for assistance, but they advised that the student must report the issue to Student Living. Student Living Noted. Brunel Assist / Maintenance Request was raised(#REQ-616822). Thank you Security (SJ) 06/10/2026.
+
+789012\tHALLS MAINTENANCE ISSUES\t05-Oct-2026\t18:55\tMiss STUDENT2 called the security office and reported that room sockets were not working,\t2026/7\tRUNNYMEDE HALL\t05-Oct-2026\tSecurity to location, trip switch reset and power is back to normal. Student Living Noted. NFA. Thank you Security (SJ) 06/10/2026
+\`\`\``;
+
+const apexRows = splitApexQueue(apexQueue);
+assert.strictEqual(apexRows.length, 3, "apex queue should split into three rows");
+assert.deepStrictEqual(
+  apexRows.map((row) => {
+    const parsed = parseInteraction(row);
+    return {
+      apexRef: parsed.apexRef,
+      contactMethod: parsed.contactMethod,
+      hall: parsed.hall,
+      caseType: parsed.caseType,
+      enquiryType: parsed.enquiryType
+    };
+  }),
+  [
+    { apexRef: "219389", contactMethod: "Apex", hall: "George Shipp Hall", caseType: "Enquiry", enquiryType: "Maintenance" },
+    { apexRef: "123456", contactMethod: "Apex", hall: "Concourse Hall", caseType: "Enquiry", enquiryType: "Maintenance" },
+    { apexRef: "789012", contactMethod: "Apex", hall: "Runnymede Hall", caseType: "Enquiry", enquiryType: "Maintenance" }
+  ],
+  "apex queue rows should parse as Apex maintenance enquiries"
+);
