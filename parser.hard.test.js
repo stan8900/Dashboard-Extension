@@ -185,3 +185,12 @@ assert.deepStrictEqual(
   ],
   "apex queue rows should parse as Apex maintenance enquiries"
 );
+
+const wrappedApexQueue = apexQueue.replace(/\n+/g, " ");
+const wrappedApexRows = splitApexQueue(wrappedApexQueue);
+assert.strictEqual(wrappedApexRows.length, 3, "wrapped apex queue should still split into three rows");
+assert.deepStrictEqual(
+  wrappedApexRows.map((row) => parseInteraction(row).apexRef),
+  ["219389", "123456", "789012"],
+  "wrapped apex queue should preserve Apex refs"
+);

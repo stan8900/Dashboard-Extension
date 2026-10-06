@@ -162,8 +162,22 @@
   function splitApexQueue(rawText) {
     const text = stripCodeFences(rawText);
     if (!text) return [];
+
+    const rowStart = /(\d{5,})\s+([A-Z][A-Z0-9 &'()/-]+?)\s+(\d{2}-[A-Za-z]{3}-\d{4})\s+(\d{1,2}:\d{2})\s+/g;
+    const starts = [];
+    let match;
+    while ((match = rowStart.exec(text)) !== null) {
+      starts.push(match.index);
+    }
+
+    if (starts.length > 1) {
+      return starts
+        .map((start, index) => text.slice(start, starts[index + 1] || text.length).trim())
+        .filter(looksLikeApexRow);
+    }
+
     return text
-      .split(/\n(?=\d{5,}\s+)/)
+      .split(/\n\s*(?=\d{5,}\s+)/)
       .map((row) => row.trim())
       .filter(looksLikeApexRow);
   }
