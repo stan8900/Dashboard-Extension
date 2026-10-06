@@ -314,13 +314,14 @@
             []
           );
           if (!nextResult || !nextResult.ready) {
-            status.textContent = `Submitted ${submitted} of ${requests.length}, but I could not open the next blank response.`;
+            const reason = nextResult && nextResult.reason ? ` ${nextResult.reason}` : "";
+            status.textContent = `Submitted ${submitted} of ${requests.length}, but I could not open the next blank response.${reason}`;
             updateQueuePanel({
               total: requests.length,
               done: submitted,
               mode: "error",
               title: "Queue paused",
-              detail: "Could not open the next blank response"
+              detail: nextResult && nextResult.reason ? nextResult.reason : "Could not open the next blank response"
             });
             return;
           }

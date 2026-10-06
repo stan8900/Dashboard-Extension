@@ -489,15 +489,71 @@
     return { submitted: true };
   }
 
-  async function prepareNextResponse() {
-    const previousCount = foundQuestionCount();
-    await sleep(2000);
-    const next = Array.from(document.querySelectorAll("button, a, [role='button']"))
-      .filter(visible)
+  function nodeText(node) {
+    return normalize([
+      node.innerText,
+      node.textContent,
+      node.value,
+      node.getAttribute && node.getAttribute("aria-label"),
+      node.getAttribute && node.getAttribute("title")
+    ].filter(Boolean).join(" "));
+  }
+
+  function nextResponseText(text) {
+    return text.includes("submit another")
+      || text.includes("another response")
+      || text.includes("new response")
+      || text.includes("submit new")
+      || text.includes("new one")
+      || text.includes("submit a new")
+      || text.includes("fill out another")
+      || text.includes("send another");
+  }
+
+  function findNextResponseAction() {
+    const direct = Array.from(document.querySelectorAll("button, a, input, [role='button']"))
+      .filter(visibleEnough)
       .find((node) => {
-        const text = normalize(node.innerText || node.getAttribute("aria-label") || "");
-        return text.includes("submit another") || text.includes("another response") || text.includes("new response");
+        const text = nodeText(node);
+        return nextResponseText(text);
       });
+    if (direct) return direct;
+
+    const textNode = Array.from(document.querySelectorAll("span, div, p"))
+      .filter(visibleEnough)
+      .find((node) => nextResponseText(nodeText(node)));
+    if (!textNode) return null;
+
+    return textNode.closest("button, a, [role='button'], label") || textNode;
+  }
+
+  async function waitForNextResponseAction(timeoutMs) {
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+      const action = findNextResponseAction();
+      if (action) return action;
+      await sleep(300);
+    }
+    return null;
+  }
+
+  async function waitForReadyForm(timeoutMs) {
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+      const hasQuestions = foundQuestionCount() > 0;
+      const hasSubmit = submitCandidates().some((node) => !nextResponseText(nodeText(node)));
+      const stillOnThanks = Boolean(findNextResponseAction());
+      if (hasQuestions && hasSubmit && !stillOnThanks) {
+        return { ready: true, questions: foundQuestionCount() };
+      }
+      await sleep(300);
+    }
+    return { ready: false, questions: foundQuestionCount() };
+  }
+
+  async function prepareNextResponse() {
+    await sleep(2000);
+    const next = await waitForNextResponseAction(12000);
 
     if (next) {
       next.scrollIntoView({ block: "center", inline: "nearest" });
@@ -505,8 +561,12 @@
     }
 
     await sleep(2000);
-    const change = await waitForQuestionCountChange(previousCount, 3000);
-    return { ready: Boolean(next) || change.questions > 0, questions: change.questions };
+    const ready = await waitForReadyForm(10000);
+    return {
+      ready: Boolean(next) && ready.ready,
+      questions: ready.questions,
+      reason: next ? "" : "Submit another response link not found."
+    };
   }
 
   async function fillAndSubmit(data) {
