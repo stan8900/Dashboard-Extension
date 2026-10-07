@@ -194,3 +194,13 @@ assert.deepStrictEqual(
   ["219389", "123456", "789012"],
   "wrapped apex queue should preserve Apex refs"
 );
+
+const lockoutApex = "456789\tLOCKOUT - HALLS\t05-Oct-2026\t22:14\tStudent ID 2211223 called Security because they left keys inside room 304.\t2026/7\tGEORGE SHIPP HALL\t05-Oct-2026\tSecurity attended location and gave access to the student. Student Living Noted.";
+const parsedLockout = parseInteraction(lockoutApex);
+assert.strictEqual(parsedLockout.apexRef, "456789", "lockout apex ref");
+assert.strictEqual(parsedLockout.studentNumber, "2211223", "lockout student id");
+assert.strictEqual(parsedLockout.roomNumber, "304", "lockout room number");
+assert.strictEqual(parsedLockout.lockoutDate, "2026-10-05", "lockout date");
+assert.strictEqual(parsedLockout.lockoutTime, "22:14", "lockout time");
+assert.strictEqual(parsedLockout.lockoutAssistanceDetails, "Security", "lockout assistance");
+assert(parsedLockout.lockoutDescription.toLowerCase().includes("left keys inside"), "lockout description");

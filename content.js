@@ -49,6 +49,14 @@
       ["Notes", "notes", "text"]
     ]
   };
+  const LOCKOUT_FIELDS = [
+    ["Student ID", "studentNumber", "text"],
+    ["Room Number", "roomNumber", "text"],
+    ["Date", "lockoutDate", "text"],
+    ["Time of Lockout", "lockoutTime", "text"],
+    ["Description of the Issue (lost keys, left keys inside, etc.)", "lockoutDescription", "text"],
+    ["Lockout Assistance Details", "lockoutAssistanceDetails", "choice"]
+  ];
   const FORM_URL_KEY = "StudentFormAutofill:lastFormUrl";
 
   function normalize(value) {
@@ -233,6 +241,32 @@
         "Recording Enquiry Team",
         "Recording enquiry team",
         "Team"
+      ],
+      roomNumber: [
+        "Room Number",
+        "Room No",
+        "Room"
+      ],
+      lockoutDate: [
+        "Date",
+        "Lockout Date",
+        "Date of Lockout"
+      ],
+      lockoutTime: [
+        "Time of Lockout",
+        "Lockout Time",
+        "Time"
+      ],
+      lockoutDescription: [
+        "Description of the Issue (lost keys, left keys inside, etc.)",
+        "Description of the Issue",
+        "Issue Description",
+        "Description"
+      ],
+      lockoutAssistanceDetails: [
+        "Lockout Assistance Details",
+        "Assistance Details",
+        "Lockout Assistance"
       ]
     };
     return aliases[key] || [label];
@@ -254,7 +288,12 @@
       notes: ["notes", "details", "description", "summary"],
       apexRef: ["apex incident number", "apex ref", "incident number"],
       relatedApexRef: ["related apex ref", "related apex", "related reference"],
-      chargeAmount: ["charge amount", "amount"]
+      chargeAmount: ["charge amount", "amount"],
+      roomNumber: ["room number", "room no", "room"],
+      lockoutDate: ["date", "lockout date", "date of lockout"],
+      lockoutTime: ["time of lockout", "lockout time", "time"],
+      lockoutDescription: ["description of the issue", "issue description", "description"],
+      lockoutAssistanceDetails: ["lockout assistance details", "assistance details"]
     };
     return hints[key] || [];
   }
@@ -276,7 +315,7 @@
 
   function fillText(container, value, key) {
     if (!value) return false;
-    const inputs = Array.from(container.querySelectorAll("textarea, input[type='text'], input[type='number'], input[type='email'], input[type='tel'], input:not([type]), [contenteditable='true']"))
+    const inputs = Array.from(container.querySelectorAll("textarea, input[type='text'], input[type='number'], input[type='email'], input[type='tel'], input[type='date'], input[type='time'], input:not([type]), [contenteditable='true']"))
       .filter(visible)
       .sort((a, b) => textInputScore(a, key) - textInputScore(b, key));
     const input = inputs[0];
@@ -415,6 +454,10 @@
   }
 
   function fieldsFor(data) {
+    if (findQuestion("Time of Lockout") && findQuestion("Lockout Assistance Details")) {
+      return LOCKOUT_FIELDS;
+    }
+
     const caseSpecific = FIELD_SETS[data.caseType] || FIELD_SETS.Enquiry;
     if (data.caseType === "Enquiry" && data.contactMethod === "Apex") {
       return FIELD_SETS.base.concat([

@@ -100,6 +100,20 @@
     [/faraday\s*6\b|fara?day\s+six/i, "Faraday 6"],
     [/faraday\s*7\b|fara?day\s+seven/i, "Faraday 7"]
   ];
+  const MONTHS = {
+    jan: "01",
+    feb: "02",
+    mar: "03",
+    apr: "04",
+    may: "05",
+    jun: "06",
+    jul: "07",
+    aug: "08",
+    sep: "09",
+    oct: "10",
+    nov: "11",
+    dec: "12"
+  };
 
   function clean(value) {
     return String(value || "")
@@ -128,6 +142,34 @@
       if (match && match[1]) return clean(match[1]);
     }
     return "";
+  }
+
+  function dateToIso(value) {
+    const match = clean(value).match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/);
+    if (!match) return clean(value);
+    const day = match[1].padStart(2, "0");
+    const month = MONTHS[match[2].slice(0, 3).toLowerCase()];
+    return month ? `${match[3]}-${month}-${day}` : clean(value);
+  }
+
+  function detectLockoutDescription(text) {
+    const explicit = firstMatch(text, [
+      /\b(?:description|issue|reason)\s*(?:is|:|-)?\s*(.+?)(?:[.!?]|\n|$)/i
+    ]);
+    if (explicit) return explicit;
+    const sentence = clean((text.match(/\b(?:lost\s+keys?|left\s+keys?\s+inside|locked\s+out|forgot\s+keys?|key\s+card\s+not\s+working|salto\s+card\s+not\s+working).+?(?:[.!?]|\n|$)/i) || [])[0]);
+    if (sentence) return sentence;
+    if (/\blost\s+keys?\b/i.test(text)) return "Lost keys.";
+    if (/\bleft\s+keys?\s+inside\b/i.test(text)) return "Left keys inside.";
+    if (/\blocked\s+out\b/i.test(text)) return "Student locked out.";
+    return detectIssue(text) || "";
+  }
+
+  function detectLockoutAssistance(text) {
+    if (/\bsecurity\b/i.test(text)) return "Security";
+    if (/\bkey\s*card|salto|access\s+card\b/i.test(text)) return "Access card";
+    if (/\bno\s+further\s+action|nfa\b/i.test(text)) return "No further action";
+    return clean(text).slice(0, 180);
   }
 
   function lines(rawText) {
@@ -382,7 +424,12 @@
       chargeType: opts.chargeType || detectChargeType(text),
       chargeAmount: opts.chargeAmount || detectChargeAmount(text),
       appealType: opts.appealType || detectAppealType(text),
-      notes: opts.notes || generatedNotes
+      notes: opts.notes || generatedNotes,
+      roomNumber: opts.roomNumber || room,
+      lockoutDate: opts.lockoutDate || dateToIso(firstMatch(text, [/\bdate\s*(?:is|:|-)?\s*(\d{4}-\d{2}-\d{2}|\d{1,2}-[A-Za-z]{3}-\d{4})\b/i])),
+      lockoutTime: opts.lockoutTime || firstMatch(text, [/\b(?:time|lockout time|time of lockout)\s*(?:is|:|-)?\s*(\d{1,2}:\d{2})\b/i]),
+      lockoutDescription: opts.lockoutDescription || detectLockoutDescription(text),
+      lockoutAssistanceDetails: opts.lockoutAssistanceDetails || detectLockoutAssistance(text)
     };
   }
 
@@ -412,6 +459,14 @@
     ] = columns;
     const body = [category, report, outcome].filter(Boolean).join(" ");
     const hall = opts.hall || normalizeHallName(hallColumn) || detectHall(body);
+    const studentNumber = opts.studentNumber || firstMatch(body, [
+      /\bstudent\s*(?:id|number|no\.?|#)?\s*(?:is|:|-)?\s*([0-9]{5,12})\b/i,
+      /\b(?:sno|sid)\s*(?:is|:|-)?\s*([0-9]{5,12})\b/i
+    ]);
+    const room = firstMatch(body, [
+      /\broom\s*(?:number|no\.?|#|:|-)?\s*([a-z]?\d+[a-z]?|\d+[a-z]?)/i,
+      /\b(?:flat|block)\s*[a-z]?\d+[a-z]?[/\s-]+(?:room\s*)?([a-z]?\d+[a-z]?|\d+[a-z]?)/i
+    ]);
     const caseType = opts.caseType || detectCaseType(body);
     const enquiryType = opts.enquiryType || detectEnquiryType(category, body);
     const notes = opts.notes || [
@@ -427,7 +482,7 @@
 
     return {
       isStudent: "Yes",
-      studentNumber: opts.studentNumber || "",
+      studentNumber,
       fullName: opts.fullName || "",
       lastName: opts.lastName || "",
       team: "Student Experience",
@@ -436,7 +491,7 @@
       enquiryType,
       hall,
       flat: "",
-      room: "",
+      room,
       issue: clean(`${category} ${report}`),
       brunelAssistRefNumber: "No",
       voucherGiven: "No",
@@ -445,7 +500,12 @@
       chargeType: opts.chargeType || detectChargeType(body),
       chargeAmount: opts.chargeAmount || detectChargeAmount(body),
       appealType: opts.appealType || detectAppealType(body),
-      notes
+      notes,
+      roomNumber: opts.roomNumber || room,
+      lockoutDate: opts.lockoutDate || dateToIso(incidentDate),
+      lockoutTime: opts.lockoutTime || incidentTime,
+      lockoutDescription: opts.lockoutDescription || detectLockoutDescription(report),
+      lockoutAssistanceDetails: opts.lockoutAssistanceDetails || detectLockoutAssistance(outcome || body)
     };
   }
 
