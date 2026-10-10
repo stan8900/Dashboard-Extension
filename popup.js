@@ -27,8 +27,11 @@
   const queueCount = $("queueCount");
   const queueProgress = $("queueProgress");
   const detectedCount = $("detectedCount");
+  const STORAGE_KEY = "studentAutofillPopupState";
   let latestParsed = null;
   let batchRunning = false;
+  let restoringState = false;
+  let saveTimer = 0;
 
   StudentAutofillParser.HALLS.forEach((hall) => {
     const option = document.createElement("option");
@@ -59,7 +62,53 @@
     };
   }
 
-  function parseAndDisplay() {
+  function formState() {
+    return Object.fromEntries(
+      Object.entries(fields).map(([key, element]) => [key, element.value])
+    );
+  }
+
+  function applyFormState(state) {
+    Object.entries(fields).forEach(([key, element]) => {
+      if (Object.prototype.hasOwnProperty.call(state, key)) {
+        element.value = state[key] || "";
+      }
+    });
+  }
+
+  function saveStateNow() {
+    if (restoringState || !chrome.storage || !chrome.storage.local) return;
+    chrome.storage.local.set({
+      [STORAGE_KEY]: {
+        fields: formState(),
+        savedAt: Date.now()
+      }
+    });
+  }
+
+  function scheduleSaveState() {
+    if (restoringState) return;
+    window.clearTimeout(saveTimer);
+    saveTimer = window.setTimeout(saveStateNow, 200);
+  }
+
+  function restoreState() {
+    if (!chrome.storage || !chrome.storage.local) return;
+    restoringState = true;
+    chrome.storage.local.get(STORAGE_KEY, (items) => {
+      const saved = items && items[STORAGE_KEY];
+      if (saved && saved.fields) {
+        applyFormState(saved.fields);
+        latestParsed = null;
+        updateDetectedCount();
+        status.textContent = "Restored saved popup data.";
+      }
+      restoringState = false;
+    });
+  }
+
+  function parseAndDisplay(options) {
+    const shouldSave = !options || options.save !== false;
     const parsed = StudentAutofillParser.parseInteraction(fields.sourceText.value);
     fields.caseType.value = parsed.caseType;
     fields.contactMethod.value = parsed.contactMethod;
@@ -76,6 +125,7 @@
     fields.enquiryType.value = parsed.enquiryType;
     latestParsed = parsed;
     status.textContent = "Details detected. Check anything unusual before filling.";
+    if (shouldSave) scheduleSaveState();
     return parsed;
   }
 
@@ -383,8 +433,20 @@
   fields.sourceText.addEventListener("input", () => {
     latestParsed = null;
     updateDetectedCount();
+    scheduleSaveState();
     window.clearTimeout(fields.sourceText.parseTimer);
     fields.sourceText.parseTimer = window.setTimeout(parseAndDisplay, 250);
+  });
+  Object.entries(fields).forEach(([key, element]) => {
+    if (key === "sourceText") return;
+    element.addEventListener("input", () => {
+      latestParsed = null;
+      scheduleSaveState();
+    });
+    element.addEventListener("change", () => {
+      latestParsed = null;
+      scheduleSaveState();
+    });
   });
   $("parseBtn").addEventListener("click", () => {
     updateDetectedCount();
@@ -405,5 +467,6 @@
       status.textContent = error.message || "Could not submit completed requests.";
     });
   });
+  restoreState();
   updateDetectedCount();
 })();
